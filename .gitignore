@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# internal planning notes — keep out of the repo
+/_notes/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
