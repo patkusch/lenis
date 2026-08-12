@@ -37,8 +37,9 @@ export class SwayEngine {
   private masterGain: GainNode | null = null;
 
   // Pre-generated fluff so the fur doesn't flicker frame to frame.
-  private fur: { angle: number; len: number; width: number }[] = [];
-  private tuft: { angle: number; len: number; width: number }[] = [];
+  private backFur: Strand[] = [];
+  private frontFur: Strand[] = [];
+  private tuft: Strand[] = [];
 
   /** Called on each edge with the side just reached (-1 left, +1 right). */
   onEdge?: (side: -1 | 1) => void;
@@ -54,25 +55,24 @@ export class SwayEngine {
   }
 
   private generateFur() {
-    const N = 140;
-    this.fur = [];
-    for (let i = 0; i < N; i++) {
-      const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.06;
-      this.fur.push({
-        angle,
-        len: 0.9 + Math.random() * 0.55,
-        width: 0.5 + Math.random() * 0.85,
-      });
-    }
+    const mk = (back: boolean): Strand => ({
+      angle: Math.random() * Math.PI * 2,
+      len: 0.85 + Math.random() * (back ? 0.7 : 0.45),
+      width: 0.6 + Math.random() * 0.9,
+      curl: (Math.random() - 0.5) * 0.5,
+      r0: back ? 0.68 + Math.random() * 0.1 : 0.86 + Math.random() * 0.1,
+    });
+    // dark, longer underfur (a soft halo) + bright, shorter overfur on the rim
+    this.backFur = Array.from({ length: 120 }, () => mk(true));
+    this.frontFur = Array.from({ length: 160 }, () => mk(false));
     // a few wispy hairs sticking up off the top
-    this.tuft = [];
-    for (let i = 0; i < 5; i++) {
-      this.tuft.push({
-        angle: -Math.PI / 2 + (Math.random() - 0.5) * 0.8,
-        len: 1.55 + Math.random() * 0.8,
-        width: 0.4 + Math.random() * 0.5,
-      });
-    }
+    this.tuft = Array.from({ length: 6 }, () => ({
+      angle: -Math.PI / 2 + (Math.random() - 0.5) * 0.9,
+      len: 1.5 + Math.random() * 0.9,
+      width: 0.4 + Math.random() * 0.5,
+      curl: (Math.random() - 0.5) * 0.4,
+      r0: 0.8,
+    }));
   }
 
   setOptions(opts: Partial<SwayOptions>) {
@@ -203,107 +203,181 @@ export class SwayEngine {
     this.ctx.fill();
 
     // Friendly fluff creature — the light your eyes follow.
-    this.drawFluff(cx, cy, r * 1.3, Math.sign(vel) || 1);
+    // Subtle "breathing" scale gives it life without distracting the eye.
+    const breath = 1 + 0.02 * Math.sin(t * 1.1);
+    this.drawFluff(cx, cy, r * 1.3 * breath, Math.sign(vel) || 1);
 
     this.raf = requestAnimationFrame(this.frame);
   };
+
+  /** Draws a single tapered fur strand, shaded by a top-left light. */
+  private strand(
+    cx: number,
+    cy: number,
+    rx: number,
+    ry: number,
+    R: number,
+    s: Strand,
+    lx: number,
+    ly: number,
+    dim: number,
+  ) {
+    const ctx = this.ctx;
+    const c = Math.cos(s.angle);
+    const sn = Math.sin(s.angle);
+    const baseX = cx + c * rx * s.r0;
+    const baseY = cy + sn * ry * s.r0;
+    const out = s.r0 + s.len * 0.42;
+    const tipX = cx + c * rx * out - sn * s.curl * R;
+    const tipY = cy + sn * ry * out + c * s.curl * R;
+
+    let dx = tipX - baseX;
+    let dy = tipY - baseY;
+    const dl = Math.hypot(dx, dy) || 1;
+    dx /= dl;
+    dy /= dl;
+    const nx = -dy;
+    const ny = dx;
+    const w = R * 0.05 * s.width;
+
+    // brightness: fur facing the light is whiter, fur facing away is cooler/darker
+    let b = 0.5 + 0.5 * (c * lx + sn * ly);
+    b = Math.max(0, Math.min(1, b)) * dim;
+    const rr = Math.round(150 + (255 - 150) * b);
+    const gg = Math.round(165 + (255 - 165) * b);
+    const bb = Math.round(205 + (255 - 205) * b);
+    ctx.fillStyle = `rgb(${rr}, ${gg}, ${bb})`;
+
+    ctx.beginPath();
+    ctx.moveTo(baseX + nx * w, baseY + ny * w);
+    ctx.lineTo(tipX, tipY);
+    ctx.lineTo(baseX - nx * w, baseY - ny * w);
+    ctx.closePath();
+    ctx.fill();
+  }
 
   /** Draws a chubby, fluffy creature centred at (cx, cy). `glance` (-1|1) tips
    *  the eyes toward the direction of travel to give it a little life. */
   private drawFluff(cx: number, cy: number, R: number, glance: number) {
     const ctx = this.ctx;
-    const rx = R * 1.22; // chubby: a touch wider than tall
+    const rx = R * 1.2;
     const ry = R * 1.05;
+    // light comes from the top-left (canvas y grows downward)
+    const lx = Math.cos(-2.2);
+    const ly = Math.sin(-2.2);
 
-    ctx.lineCap = "round";
+    // --- Soft contact shadow, so it feels like it has volume ---
+    const sh = ctx.createRadialGradient(
+      cx, cy + ry * 1.25, R * 0.1,
+      cx, cy + ry * 1.25, rx * 1.1,
+    );
+    sh.addColorStop(0, "rgba(0, 0, 0, 0.28)");
+    sh.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = sh;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + ry * 1.25, rx * 0.85, ry * 0.26, 0, 0, Math.PI * 2);
+    ctx.fill();
 
-    // --- Fur, drawn behind the body so the edge reads as fluff ---
-    ctx.strokeStyle = "rgba(238, 242, 255, 0.85)";
-    for (const f of this.fur) {
-      const hang = Math.sin(f.angle) > 0 ? 1.12 : 1.0; // longer strands underneath
-      const inner = 0.8;
-      const x1 = cx + Math.cos(f.angle) * rx * inner;
-      const y1 = cy + Math.sin(f.angle) * ry * inner;
-      const out = (1.0 + 0.24 * f.len) * hang;
-      const x2 = cx + Math.cos(f.angle) * rx * out;
-      const y2 = cy + Math.sin(f.angle) * ry * out;
-      ctx.lineWidth = Math.max(1, R * 0.05 * f.width);
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
-    }
-    // wispy hairs sticking up off the top
-    ctx.strokeStyle = "rgba(240, 243, 255, 0.9)";
-    for (const t of this.tuft) {
-      const x1 = cx + Math.cos(t.angle) * rx * 0.7;
-      const y1 = cy + Math.sin(t.angle) * ry * 0.85;
-      const x2 = cx + Math.cos(t.angle) * rx * t.len;
-      const y2 = cy + Math.sin(t.angle) * ry * t.len;
-      ctx.lineWidth = Math.max(1, R * 0.045 * t.width);
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.quadraticCurveTo(x1 + R * 0.12, (y1 + y2) / 2, x2, y2);
-      ctx.stroke();
-    }
+    // --- Dark, longer underfur → a soft halo that reads as depth ---
+    for (const s of this.backFur) this.strand(cx, cy, rx, ry, R, s, lx, ly, 0.72);
 
-    // --- Body ---
-    ctx.fillStyle = "#f7f9ff";
+    // --- Shaded body: a lit sphere, bright top-left → cool bottom-right ---
+    const g = ctx.createRadialGradient(
+      cx - rx * 0.34, cy - ry * 0.42, R * 0.12,
+      cx, cy, rx * 1.12,
+    );
+    g.addColorStop(0, "#ffffff");
+    g.addColorStop(0.55, "#eef2ff");
+    g.addColorStop(1, "#bfcae6");
+    ctx.fillStyle = g;
     ctx.beginPath();
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     ctx.fill();
-    // soft shading for a round, plush feel
-    const shade = ctx.createRadialGradient(
-      cx - rx * 0.3,
-      cy - ry * 0.4,
-      R * 0.1,
-      cx,
-      cy,
-      rx * 1.15,
+
+    // ambient occlusion crescent along the bottom edge
+    const ao = ctx.createRadialGradient(
+      cx, cy + ry * 0.55, R * 0.2,
+      cx, cy + ry * 0.55, ry * 1.1,
     );
-    shade.addColorStop(0, "rgba(255, 255, 255, 0.9)");
-    shade.addColorStop(1, "rgba(205, 216, 255, 0.22)");
-    ctx.fillStyle = shade;
+    ao.addColorStop(0, "rgba(120, 132, 170, 0)");
+    ao.addColorStop(1, "rgba(120, 132, 170, 0.35)");
+    ctx.save();
     ctx.beginPath();
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = ao;
+    ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2);
+    ctx.restore();
+
+    // --- Bright overfur on the rim + wispy top hairs ---
+    for (const s of this.frontFur) this.strand(cx, cy, rx, ry, R, s, lx, ly, 1.0);
+    for (const t of this.tuft) this.strand(cx, cy, rx, ry, R, t, lx, ly, 1.0);
+
+    // --- Specular sheen, upper-left ---
+    const hl = ctx.createRadialGradient(
+      cx - rx * 0.32, cy - ry * 0.38, R * 0.04,
+      cx - rx * 0.32, cy - ry * 0.38, R * 0.62,
+    );
+    hl.addColorStop(0, "rgba(255, 255, 255, 0.55)");
+    hl.addColorStop(1, "rgba(255, 255, 255, 0)");
+    ctx.fillStyle = hl;
+    ctx.beginPath();
+    ctx.ellipse(cx - rx * 0.3, cy - ry * 0.34, R * 0.52, R * 0.4, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // --- Face: chubby → eyes sit low and wide, big and glossy ---
     const eyeDX = rx * 0.34;
-    const eyeY = cy + ry * 0.06;
-    const eyeR = R * 0.19;
+    const eyeY = cy + ry * 0.08;
+    const eyeR = R * 0.2;
 
     // blush
-    ctx.fillStyle = "rgba(255, 158, 173, 0.4)";
+    ctx.fillStyle = "rgba(255, 158, 173, 0.45)";
     for (const s of [-1, 1]) {
       ctx.beginPath();
-      ctx.ellipse(cx + s * rx * 0.56, eyeY + R * 0.26, R * 0.16, R * 0.1, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + s * rx * 0.55, eyeY + R * 0.26, R * 0.16, R * 0.1, 0, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // eyes with catch-lights
+    // glossy eyes with a radial sheen + catch-lights
     for (const s of [-1, 1]) {
       const ex = cx + s * eyeDX + glance * R * 0.05;
-      ctx.fillStyle = "#1b1e34";
+      const eg = ctx.createRadialGradient(
+        ex - eyeR * 0.3, eyeY - eyeR * 0.4, eyeR * 0.1,
+        ex, eyeY, eyeR * 1.2,
+      );
+      eg.addColorStop(0, "#3b4066");
+      eg.addColorStop(0.45, "#191c30");
+      eg.addColorStop(1, "#0a0c18");
+      ctx.fillStyle = eg;
       ctx.beginPath();
       ctx.ellipse(ex, eyeY, eyeR, eyeR * 1.15, 0, 0, Math.PI * 2);
       ctx.fill();
+      // big catch-light + tiny sparkle
       ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
       ctx.beginPath();
-      ctx.arc(ex - eyeR * 0.3, eyeY - eyeR * 0.4, eyeR * 0.34, 0, Math.PI * 2);
+      ctx.arc(ex - eyeR * 0.32, eyeY - eyeR * 0.42, eyeR * 0.34, 0, Math.PI * 2);
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(ex + eyeR * 0.28, eyeY + eyeR * 0.18, eyeR * 0.14, 0, Math.PI * 2);
+      ctx.arc(ex + eyeR * 0.28, eyeY + eyeR * 0.2, eyeR * 0.13, 0, Math.PI * 2);
       ctx.fill();
     }
 
     // little smile
-    ctx.strokeStyle = "#1b1e34";
+    ctx.strokeStyle = "#191c30";
     ctx.lineWidth = Math.max(1.5, R * 0.05);
+    ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.arc(cx, eyeY + R * 0.26, R * 0.17, 0.15 * Math.PI, 0.85 * Math.PI, false);
+    ctx.arc(cx, eyeY + R * 0.28, R * 0.17, 0.15 * Math.PI, 0.85 * Math.PI, false);
     ctx.stroke();
   }
+}
+
+interface Strand {
+  angle: number;
+  len: number;
+  width: number;
+  curl: number;
+  r0: number;
 }
 
 /** Accepts #rrggbb and returns rgba() with the given alpha. */

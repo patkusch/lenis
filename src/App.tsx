@@ -249,6 +249,8 @@ function Toggle({
   );
 }
 
+const SUDS_FACES = ["😌", "🙂", "😐", "😕", "😟", "😧", "😨", "😰", "😥", "😱", "😭"];
+
 function Suds({
   value,
   onChange,
@@ -257,17 +259,24 @@ function Suds({
   onChange: (n: number) => void;
 }) {
   return (
-    <div className="suds">
-      {Array.from({ length: 11 }, (_, i) => (
-        <button
-          key={i}
-          className={value === i ? "suds-btn on" : "suds-btn"}
-          onClick={() => onChange(i)}
-          aria-label={`${i} out of 10`}
-        >
-          {i}
-        </button>
-      ))}
+    <div>
+      <div className="suds">
+        {SUDS_FACES.map((face, i) => (
+          <button
+            key={i}
+            className={value === i ? "suds-btn on" : "suds-btn"}
+            onClick={() => onChange(i)}
+            aria-label={`${i} out of 10`}
+          >
+            <span className="suds-face">{face}</span>
+            <span className="suds-num">{i}</span>
+          </button>
+        ))}
+      </div>
+      <div className="range-ends">
+        <span>calm</span>
+        <span>very anxious</span>
+      </div>
     </div>
   );
 }
