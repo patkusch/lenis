@@ -10,6 +10,24 @@ your audio never leaves your device.
 
 Built for **Hack for Humanity — Summer 2026** (AI for mental & physical health).
 
+<p align="center">
+  <img src="docs/session.png" width="88%" alt="A calming Lenis session — a soft fluffball drifts across a starry field" />
+</p>
+<p align="center"><em>Follow the fluffball. It drifts to the pace your voice sets.</em></p>
+
+<table>
+  <tr>
+    <td align="center"><strong>It reads your voice</strong></td>
+    <td align="center"><strong>Honest about the evidence</strong></td>
+    <td align="center"><strong>Concussion recovery mode</strong></td>
+  </tr>
+  <tr>
+    <td><img src="docs/voice-read.png" alt="Voice-read screen: 'A Bit Elevated → Next set: slower'" /></td>
+    <td><img src="docs/evidence.png" alt="Evidence screen: what's supported, debated, proof-of-concept" /></td>
+    <td><img src="docs/recovery.png" alt="Concussion recovery: smooth pursuit and saccade exercises" /></td>
+  </tr>
+</table>
+
 ---
 
 ## The problem
@@ -39,6 +57,10 @@ Self-guided EMDR / bilateral-stimulation apps are everywhere, but they all run o
 - **📊 Honesty on purpose.** A built-in **"About the evidence"** screen lays out,
   in plain language, what's well-supported (EMDR for PTSD), what's debated (the
   eye movements themselves), and what's just a proof-of-concept (the voice read).
+- **🧠 Concussion recovery mode.** The same smooth-pursuit engine powers
+  clinician-aligned oculomotor exercises — smooth pursuit and saccades — with a
+  symptom check before and after and a summary to bring to your clinician.
+  Symptom-titrated: a little challenge is fine, a real flare is your cue to stop.
 
 ## Responsible-AI stance
 
