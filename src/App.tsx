@@ -12,6 +12,7 @@ const PATTERNS: { key: Pattern; label: string; glyph: string; note: string }[] =
 type Phase =
   | "welcome"
   | "evidence"
+  | "recovery"
   | "setup"
   | "session"
   | "checkin"
@@ -94,10 +95,13 @@ export default function App() {
         <Welcome
           onContinue={() => setPhase("setup")}
           onEvidence={() => setPhase("evidence")}
+          onRecovery={() => setPhase("recovery")}
         />
       )}
 
       {phase === "evidence" && <Evidence onBack={() => setPhase("welcome")} />}
+
+      {phase === "recovery" && <Recovery onBack={() => setPhase("welcome")} />}
 
       {phase === "setup" && (
         <Setup
@@ -171,9 +175,11 @@ export default function App() {
 function Welcome({
   onContinue,
   onEvidence,
+  onRecovery,
 }: {
   onContinue: () => void;
   onEvidence: () => void;
+  onRecovery: () => void;
 }) {
   const [ack, setAck] = useState(false);
   return (
@@ -226,6 +232,9 @@ function Welcome({
       </button>
       <button className="linkish" onClick={onEvidence}>
         About the evidence &amp; limits
+      </button>
+      <button className="linkish" onClick={onRecovery}>
+        Concussion recovery exercises →
       </button>
     </main>
   );
@@ -304,6 +313,312 @@ function Evidence({ onBack }: { onBack: () => void }) {
         Back
       </button>
     </main>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Recovery — concussion oculomotor exercises (symptom-titrated)      */
+/* ------------------------------------------------------------------ */
+
+const RECOVERY_EXERCISES: {
+  key: string;
+  name: string;
+  pattern: Pattern;
+  secondsPerPass: number;
+  sec: number;
+  instruction: string;
+}[] = [
+  {
+    key: "pursuit",
+    name: "Smooth pursuit",
+    pattern: "horizontal",
+    secondsPerPass: 1.2,
+    sec: 24,
+    instruction:
+      "Follow the fluffball smoothly with your eyes. Keep your head still — only your eyes move.",
+  },
+  {
+    key: "saccade",
+    name: "Saccades",
+    pattern: "saccade",
+    secondsPerPass: 0.9,
+    sec: 20,
+    instruction:
+      "Snap your eyes to the fluffball each time it jumps. Keep your head still.",
+  },
+];
+
+function Recovery({ onBack }: { onBack: () => void }) {
+  type Step = "intro" | "pre" | "exercise" | "post" | "summary";
+  const [step, setStep] = useState<Step>("intro");
+  const [pre, setPre] = useState<number | null>(null);
+  const [post, setPost] = useState<number | null>(null);
+  const [idx, setIdx] = useState(0);
+  const [provoked, setProvoked] = useState<boolean[]>([]);
+
+  const disclaimer = (
+    <p className="muted small privacy-note">
+      🔒 A between-visits aid, not a diagnosis or a substitute for your clinician's
+      plan. Keep it sub-symptom-threshold: a little challenge is fine, a real spike
+      is your cue to stop.
+    </p>
+  );
+
+  if (step === "intro") {
+    return (
+      <main className="screen">
+        <div className="mark small">Recovery mode</div>
+        <h1 className="tight">Gentle eye exercises for concussion recovery.</h1>
+        <p className="lede">
+          After a concussion the eyes and balance systems often need gradual
+          retraining. These are two exercises clinicians use — <strong>smooth
+          pursuit</strong> and <strong>saccades</strong> — kept short and
+          symptom-titrated.
+        </p>
+        <div className="card evidence">
+          <div className="ev-row">
+            <span className="ev-dot amber" />
+            <div>
+              <strong>Alongside your clinician, not instead of them.</strong>
+              <p>
+                Vision and vestibular therapy is normally prescribed and
+                progressed by a professional. Use this to practise between visits
+                and log how you respond.
+              </p>
+            </div>
+          </div>
+          <div className="ev-row">
+            <span className="ev-dot red" />
+            <div>
+              <strong>Stop if symptoms clearly flare.</strong>
+              <p>A real spike in headache, dizziness or nausea means stop and rest.</p>
+            </div>
+          </div>
+        </div>
+        <button className="primary" onClick={() => setStep("pre")}>
+          Start
+        </button>
+        <button className="linkish" onClick={onBack}>
+          Back
+        </button>
+      </main>
+    );
+  }
+
+  if (step === "pre") {
+    return (
+      <main className="screen">
+        <div className="mark small">Before we start</div>
+        <h1 className="tight">How are your symptoms right now?</h1>
+        <p className="lede">
+          Rate your overall symptoms — headache, dizziness, nausea, fogginess — so
+          we can compare afterward.
+        </p>
+        <div className="card">
+          <NumberScale value={pre} onChange={setPre} lowLabel="none" highLabel="severe" />
+        </div>
+        <button
+          className="primary"
+          onClick={() => {
+            setIdx(0);
+            setProvoked([]);
+            setStep("exercise");
+          }}
+        >
+          Begin exercises
+        </button>
+        <button className="linkish" onClick={onBack}>
+          Back
+        </button>
+      </main>
+    );
+  }
+
+  if (step === "exercise") {
+    const ex = RECOVERY_EXERCISES[idx];
+    const advance = (didProvoke: boolean) => {
+      const next = [...provoked];
+      next[idx] = didProvoke;
+      setProvoked(next);
+      if (idx + 1 < RECOVERY_EXERCISES.length) setIdx(idx + 1);
+      else setStep("post");
+    };
+    return (
+      <RecoveryExercise
+        key={ex.key}
+        exercise={ex}
+        index={idx}
+        total={RECOVERY_EXERCISES.length}
+        onDone={() => advance(false)}
+        onProvoked={() => advance(true)}
+      />
+    );
+  }
+
+  if (step === "post") {
+    return (
+      <main className="screen">
+        <div className="mark small">Nicely done</div>
+        <h1 className="tight">How are your symptoms now?</h1>
+        <div className="card">
+          <NumberScale value={post} onChange={setPost} lowLabel="none" highLabel="severe" />
+        </div>
+        <button className="primary" onClick={() => setStep("summary")}>
+          See summary
+        </button>
+      </main>
+    );
+  }
+
+  // summary
+  const delta = pre !== null && post !== null ? post - pre : null;
+  return (
+    <main className="screen">
+      <div className="mark small">Session summary</div>
+      <h1 className="tight">One to bring to your clinician.</h1>
+      <div className="card">
+        <div className="compare-row">
+          <span>before</span>
+          <div className="meter">
+            <div className="meter-fill you" style={{ width: `${(pre ?? 0) * 10}%` }} />
+          </div>
+          <span className="compare-val">{pre ?? "–"}/10</span>
+        </div>
+        <div className="compare-row">
+          <span>after</span>
+          <div className="meter">
+            <div className="meter-fill voice" style={{ width: `${(post ?? 0) * 10}%` }} />
+          </div>
+          <span className="compare-val">{post ?? "–"}/10</span>
+        </div>
+        {delta !== null && (
+          <p className="muted small pace-why">
+            {delta > 1
+              ? "Symptoms rose during the exercises — worth telling your clinician, and easing off next time."
+              : delta < -1
+                ? "Symptoms eased — a good sign. Keep sessions short and regular."
+                : "Symptoms held about steady — a fine result for a session."}
+          </p>
+        )}
+        <ul className="recovery-log">
+          {RECOVERY_EXERCISES.map((ex, i) => (
+            <li key={ex.key}>
+              {ex.name}: {provoked[i] ? "stopped — symptoms flared" : "completed"}
+            </li>
+          ))}
+        </ul>
+      </div>
+      {disclaimer}
+      <button className="primary" onClick={onBack}>
+        Done
+      </button>
+    </main>
+  );
+}
+
+function RecoveryExercise({
+  exercise,
+  index,
+  total,
+  onDone,
+  onProvoked,
+}: {
+  exercise: (typeof RECOVERY_EXERCISES)[number];
+  index: number;
+  total: number;
+  onDone: () => void;
+  onProvoked: () => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [remaining, setRemaining] = useState(exercise.sec);
+
+  useEffect(() => {
+    const canvas = canvasRef.current!;
+    const engine = new SwayEngine(canvas, {
+      secondsPerPass: exercise.secondsPerPass,
+      audio: true,
+      haptics: true,
+      pattern: exercise.pattern,
+      color: "#8ec5ff",
+      sizeFraction: 0.045,
+    });
+    engine.start();
+    const onResize = () => engine.resize();
+    window.addEventListener("resize", onResize);
+    const startedAt = Date.now();
+    const tick = window.setInterval(() => {
+      const left = Math.max(0, exercise.sec - (Date.now() - startedAt) / 1000);
+      setRemaining(left);
+      if (left <= 0) {
+        window.clearInterval(tick);
+        engine.stop();
+        onDone();
+      }
+    }, 250);
+    return () => {
+      window.clearInterval(tick);
+      window.removeEventListener("resize", onResize);
+      engine.destroy();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="session">
+      <canvas ref={canvasRef} className="canvas" />
+      <div className="session-overlay">
+        <div className="session-top">
+          <div className="set-banner">
+            Exercise {index + 1} of {total} · {exercise.name}
+          </div>
+          <p className="follow">{exercise.instruction}</p>
+        </div>
+        <div className="timer">{Math.ceil(remaining)}s</div>
+        <div className="session-controls">
+          <div className="session-actions">
+            <button className="ghost" onClick={onDone}>
+              Skip
+            </button>
+            <button className="stop" onClick={onProvoked}>
+              Symptoms flared — stop
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NumberScale({
+  value,
+  onChange,
+  lowLabel,
+  highLabel,
+}: {
+  value: number | null;
+  onChange: (n: number) => void;
+  lowLabel: string;
+  highLabel: string;
+}) {
+  return (
+    <div>
+      <div className="suds">
+        {Array.from({ length: 11 }, (_, i) => (
+          <button
+            key={i}
+            className={value === i ? "suds-btn on" : "suds-btn"}
+            onClick={() => onChange(i)}
+            aria-label={`${i} out of 10`}
+          >
+            <span className="suds-num">{i}</span>
+          </button>
+        ))}
+      </div>
+      <div className="range-ends">
+        <span>{lowLabel}</span>
+        <span>{highLabel}</span>
+      </div>
+    </div>
   );
 }
 

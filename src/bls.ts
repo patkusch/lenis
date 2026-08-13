@@ -3,7 +3,7 @@
 // the way a therapist's hand does), with optional stereo-panned audio pings
 // and haptic taps synced to each edge. All local; nothing leaves the device.
 
-export type Pattern = "horizontal" | "vertical";
+export type Pattern = "horizontal" | "vertical" | "saccade";
 
 export interface SwayOptions {
   /** Seconds for one left→right pass. Lower = faster. ~0.9s is a common pace. */
@@ -35,6 +35,11 @@ function pathAt(pattern: Pattern, p: number) {
   if (pattern === "vertical") {
     return { px: 0, py: sin, vx: 0, vy: cos };
   }
+  if (pattern === "saccade") {
+    // Hold near an edge, then jump quickly to the other — trains saccades
+    // rather than smooth pursuit.
+    return { px: Math.max(-1, Math.min(1, sin * 3)), py: 0, vx: cos, vy: 0 };
+  }
   // horizontal (default)
   return { px: sin, py: 0, vx: cos, vy: 0 };
 }
@@ -57,6 +62,7 @@ export class SwayEngine {
   private backFur: Strand[] = [];
   private frontFur: Strand[] = [];
   private tuft: Strand[] = [];
+  private stars: { x: number; y: number; r: number; a: number; ph: number; spd: number }[] = [];
 
   /** Called on each edge with the side just reached (-1 left, +1 right). */
   onEdge?: (side: -1 | 1) => void;
@@ -68,7 +74,19 @@ export class SwayEngine {
     this.ctx = ctx;
     this.opts = { ...DEFAULTS, ...opts };
     this.generateFur();
+    this.generateStars();
     this.resize();
+  }
+
+  private generateStars() {
+    this.stars = Array.from({ length: 72 }, () => ({
+      x: Math.random(),
+      y: Math.random(),
+      r: 0.4 + Math.random() * 1.4,
+      a: 0.25 + Math.random() * 0.55,
+      ph: Math.random() * Math.PI * 2,
+      spd: 0.5 + Math.random() * 1.2,
+    }));
   }
 
   private generateFur() {
@@ -223,6 +241,17 @@ export class SwayEngine {
     // Kept light so the furry detail stays crisp rather than smearing.
     this.ctx.fillStyle = "rgba(11, 13, 26, 0.55)";
     this.ctx.fillRect(0, 0, w, h);
+
+    // Twinkling starfield behind everything.
+    for (const s of this.stars) {
+      const tw = 0.55 + 0.45 * Math.sin(t * 1.5 * s.spd + s.ph);
+      this.ctx.globalAlpha = s.a * tw;
+      this.ctx.fillStyle = "#dfe7ff";
+      this.ctx.beginPath();
+      this.ctx.arc(s.x * w, s.y * h, s.r, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+    this.ctx.globalAlpha = 1;
 
     // Glow
     const grad = this.ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3.2);

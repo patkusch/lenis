@@ -764,6 +764,14 @@ a.resource:hover {
   opacity: 0.75;
 }
 
+.recovery-log {
+  margin: 16px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
 /* ---- self-report vs voice comparison ---- */
 
 .compare-rows {
