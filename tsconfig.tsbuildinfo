@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/bls.ts","./src/main.tsx","./src/voice.ts"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/bls.ts","./src/coach.ts","./src/main.tsx","./src/transcribe.ts","./src/vite-env.d.ts","./src/voice.ts"],"version":"5.9.3"}

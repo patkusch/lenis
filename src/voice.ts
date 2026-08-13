@@ -111,37 +111,118 @@ export class VoiceAnalyzer {
   }
 
   private compute(): VoiceReading {
-    const frames = this.rmss.length;
-    const speechRate = frames ? this.voicedFrames / frames : 0;
-    const pauseRatio = 1 - speechRate;
-    const meanPitch = mean(this.pitches);
-    const pitchStd = std(this.pitches);
-    // coefficient of variation, normalized so ~0.25 CV maps to 1.0
-    const pitchVariability = meanPitch ? clamp01(pitchStd / meanPitch / 0.25) : 0;
-    const energy = clamp01(mean(this.rmss) / 0.12);
-    const clarity = mean(this.clarities);
-
-    // Arousal proxy: elevated pitch variability, more continuous speech, and
-    // higher energy read as higher arousal. Weighted blend in 0..1.
-    const arousal = clamp01(
-      0.45 * pitchVariability + 0.3 * speechRate + 0.25 * energy,
+    return reduceReading(
+      this.pitches,
+      this.clarities,
+      this.rmss,
+      this.voicedFrames,
+      this.rmss.length,
     );
-
-    const ok = this.pitches.length >= 8 && frames >= 20;
-
-    return {
-      arousal,
-      band: bandFor(arousal),
-      meanPitchHz: meanPitch,
-      pitchVariability,
-      speechRate,
-      pauseRatio,
-      energy,
-      clarity,
-      frames,
-      ok,
-    };
   }
+}
+
+/** Turns accumulated per-frame features into a reading. Shared by the live
+ *  analyzer and the offline buffer analyzer so they behave identically. */
+export function reduceReading(
+  pitches: number[],
+  clarities: number[],
+  rmss: number[],
+  voicedFrames: number,
+  frames: number,
+): VoiceReading {
+  const speechRate = frames ? voicedFrames / frames : 0;
+  const pauseRatio = 1 - speechRate;
+  const meanPitch = mean(pitches);
+  const pitchStd = std(pitches);
+  // coefficient of variation, normalized so ~0.25 CV maps to 1.0
+  const pitchVariability = meanPitch ? clamp01(pitchStd / meanPitch / 0.25) : 0;
+  const energy = clamp01(mean(rmss) / 0.12);
+  const clarity = mean(clarities);
+
+  // Arousal proxy: elevated pitch variability, more continuous speech, and
+  // higher energy read as higher arousal. Weighted blend in 0..1.
+  const arousal = clamp01(0.45 * pitchVariability + 0.3 * speechRate + 0.25 * energy);
+
+  return {
+    arousal,
+    band: bandFor(arousal),
+    meanPitchHz: meanPitch,
+    pitchVariability,
+    speechRate,
+    pauseRatio,
+    energy,
+    clarity,
+    frames,
+    ok: pitches.length >= 8 && frames >= 20,
+  };
+}
+
+/** Analyzes a raw mono PCM buffer (offline) through the same pitch/energy
+ *  pipeline as the live mic path. Used for self-tests and headless checks. */
+export function analyzeSamples(samples: Float32Array, sampleRate: number): VoiceReading {
+  const N = 2048;
+  const detector: PitchDetector<Float32Array<ArrayBuffer>> =
+    PitchDetector.forFloat32Array(N);
+  const buf = new Float32Array(N);
+  const pitches: number[] = [];
+  const clarities: number[] = [];
+  const rmss: number[] = [];
+  let voiced = 0;
+
+  for (let off = 0; off + N <= samples.length; off += N) {
+    buf.set(samples.subarray(off, off + N));
+    const [pitch, clarity] = detector.findPitch(buf, sampleRate);
+    const rms = rootMeanSquare(buf);
+    const isVoiced = rms > 0.012 && clarity > 0.6 && pitch > 60 && pitch < 500;
+    rmss.push(rms);
+    if (isVoiced) {
+      voiced++;
+      pitches.push(pitch);
+      clarities.push(clarity);
+    }
+  }
+  return reduceReading(pitches, clarities, rmss, voiced, rmss.length);
+}
+
+/** Generates a synthetic voice-like clip for testing the analyzer without a
+ *  mic. "calm" = steady low pitch with pauses; "agitated" = higher, jittery,
+ *  continuous, louder. Not real speech — just enough structure to exercise the
+ *  pitch-variability / speech-rate / energy features. */
+export function synthClip(
+  kind: "calm" | "agitated",
+  sampleRate = 44100,
+  seconds = 2.5,
+): Float32Array {
+  const n = Math.floor(sampleRate * seconds);
+  const out = new Float32Array(n);
+  let phase = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sampleRate;
+    let f: number;
+    let amp: number;
+    let gate: number;
+    if (kind === "calm") {
+      f = 118 + 2 * Math.sin(2 * Math.PI * 0.4 * t); // near-steady low pitch
+      amp = 0.05;
+      gate = t % 0.6 < 0.4 ? 1 : 0; // 0.4s voiced, 0.2s pause
+    } else {
+      // swinging pitch (high variability), continuous, louder
+      f = 210 + 55 * Math.sin(2 * Math.PI * 5 * t) + 18 * Math.sin(2 * Math.PI * 13 * t);
+      amp = 0.16;
+      gate = 1;
+    }
+    phase += (2 * Math.PI * f) / sampleRate; // integrate frequency → clean pitch
+    out[i] = gate * amp * Math.sin(phase);
+  }
+  return out;
+}
+
+// Dev-only hook so the analyzer can be exercised from the console / tests.
+if (typeof window !== "undefined" && import.meta.env?.DEV) {
+  (window as unknown as { __swayTest?: unknown }).__swayTest = {
+    analyzeSamples,
+    synthClip,
+  };
 }
 
 function bandFor(a: number): VoiceReading["band"] {

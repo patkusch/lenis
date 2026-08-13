@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { SwayEngine, type Pattern } from "./bls";
 import { VoiceAnalyzer, sampleReading, type VoiceReading } from "./voice";
+import { guideWithRules, type Guidance } from "./coach";
+import { Transcriber } from "./transcribe";
 
 const PATTERNS: { key: Pattern; label: string; glyph: string; note: string }[] = [
   { key: "horizontal", label: "Side to side", glyph: "↔", note: "the classic" },
@@ -16,26 +18,10 @@ type Phase =
   | "close"
   | "distress";
 
-/** Maps the vocal arousal proxy (0..1) to the next set's pace. Elevated arousal
- *  → slower/calmer (longer seconds per pass); calm → back toward baseline. */
-function adaptPace(base: number, arousal: number): number {
-  const delta = (arousal - 0.5) * 0.7; // ±0.35s swing around baseline
-  return Math.max(0.5, Math.min(1.6, base + delta));
-}
-
 function paceWord(base: number, next: number): string {
   if (next > base + 0.04) return "slower";
   if (next < base - 0.04) return "a touch quicker";
   return "steady";
-}
-
-/** Plain-language reason for the pace change, so users know what it's *for*. */
-function paceRationale(word: string): string {
-  if (word === "slower")
-    return "Your voice sounded activated, so we'll slow down — a gentler rhythm gives a keyed-up nervous system room to settle.";
-  if (word === "a touch quicker")
-    return "Your voice sounded settled, so a slightly livelier rhythm helps you stay present and engaged.";
-  return "Your voice sounded steady, so we'll hold a comfortable, even rhythm.";
 }
 
 interface CheckIn {
@@ -95,8 +81,8 @@ export default function App() {
     setPhase("session");
   };
 
-  const continueFromReading = (r: VoiceReading) => {
-    setPace(adaptPace(secondsPerPass, r.arousal));
+  const continueFromReading = (r: VoiceReading, g: Guidance) => {
+    setPace(g.nextPace);
     setLastReading(r);
     setSetNum((n) => n + 1);
     setPhase("session");
@@ -153,6 +139,7 @@ export default function App() {
           baselinePace={secondsPerPass}
           onContinue={continueFromReading}
           onFinish={() => setPhase("close")}
+          onDistress={() => setPhase("distress")}
         />
       )}
 
@@ -601,18 +588,37 @@ function CheckIn({
   baselinePace,
   onContinue,
   onFinish,
+  onDistress,
 }: {
   baselinePace: number;
-  onContinue: (r: VoiceReading) => void;
+  onContinue: (r: VoiceReading, g: Guidance) => void;
   onFinish: () => void;
+  onDistress: () => void;
 }) {
   type Stage = "intro" | "recording" | "done" | "error";
   const [stage, setStage] = useState<Stage>("intro");
   const [level, setLevel] = useState(0);
+  const [liveText, setLiveText] = useState("");
   const [reading, setReading] = useState<VoiceReading | null>(null);
+  const [guidance, setGuidance] = useState<Guidance | null>(null);
   const [remaining, setRemaining] = useState(MAX_RECORD_SEC);
   const analyzerRef = useRef<VoiceAnalyzer | null>(null);
+  const transcriberRef = useRef<Transcriber | null>(null);
   const timerRef = useRef<number | undefined>(undefined);
+
+  const settle = useCallback(
+    (r: VoiceReading, transcript: string) => {
+      const g = guideWithRules(r, baselinePace, transcript);
+      setReading(r);
+      setGuidance(g);
+      if (g.crisis) {
+        onDistress();
+        return;
+      }
+      setStage("done");
+    },
+    [baselinePace, onDistress],
+  );
 
   const finish = useCallback(() => {
     if (timerRef.current) {
@@ -622,15 +628,25 @@ function CheckIn({
     const az = analyzerRef.current;
     if (!az) return;
     analyzerRef.current = null;
-    setReading(az.stop());
+    const r = az.stop();
+    const transcript = transcriberRef.current?.stop() ?? "";
+    transcriberRef.current = null;
     setLevel(0);
-    setStage("done");
-  }, []);
+    settle(r, transcript);
+  }, [settle]);
 
-  const showSample = useCallback((arousal: number) => {
-    setReading(sampleReading(arousal));
-    setStage("done");
-  }, []);
+  const showSample = useCallback(
+    (arousal: number) => {
+      settle(sampleReading(arousal), "");
+    },
+    [settle],
+  );
+
+  // Skip the mic this round: continue at a neutral, unchanged pace.
+  const continueNeutral = useCallback(() => {
+    const r = sampleReading(0.5);
+    onContinue(r, guideWithRules(r, baselinePace, ""));
+  }, [onContinue, baselinePace]);
 
   const begin = useCallback(async () => {
     const az = new VoiceAnalyzer();
@@ -643,6 +659,13 @@ function CheckIn({
       setStage("error");
       return;
     }
+    // Free, on-device transcription (Chrome/Edge). No-op elsewhere.
+    const tr = new Transcriber();
+    tr.onText = (t) => setLiveText(t);
+    tr.start();
+    transcriberRef.current = tr;
+
+    setLiveText("");
     setStage("recording");
     setRemaining(MAX_RECORD_SEC);
     const startedAt = Date.now();
@@ -659,6 +682,8 @@ function CheckIn({
       if (timerRef.current) window.clearInterval(timerRef.current);
       analyzerRef.current?.stop();
       analyzerRef.current = null;
+      transcriberRef.current?.stop();
+      transcriberRef.current = null;
     },
     [],
   );
@@ -683,7 +708,7 @@ function CheckIn({
         <button className="primary" onClick={begin}>
           🎤 Start speaking
         </button>
-        <button className="linkish" onClick={() => onContinue(sampleReading(0.5))}>
+        <button className="linkish" onClick={continueNeutral}>
           No mic? Continue without it
         </button>
         <button className="linkish" onClick={onFinish}>
@@ -707,6 +732,7 @@ function CheckIn({
           <div className="mic-core">🎤</div>
         </div>
         <p className="lede">Say a little about how you're feeling right now.</p>
+        {liveText && <p className="transcript">"{liveText}"</p>}
         <p className="muted">{Math.ceil(remaining)}s</p>
         <button className="primary" onClick={finish}>
           Done
@@ -731,7 +757,7 @@ function CheckIn({
         <button className="linkish" onClick={() => showSample(0.68)}>
           Preview a sample read (no mic)
         </button>
-        <button className="linkish" onClick={() => onContinue(sampleReading(0.5))}>
+        <button className="linkish" onClick={continueNeutral}>
           Continue without the mic
         </button>
         <button className="linkish" onClick={onFinish}>
@@ -743,8 +769,7 @@ function CheckIn({
 
   // stage === "done"
   const r = reading!;
-  const next = adaptPace(baselinePace, r.arousal);
-  const word = paceWord(baselinePace, next);
+  const g = guidance!;
   return (
     <main className="screen center">
       <div className="mark small">Your voice read as</div>
@@ -770,15 +795,16 @@ function CheckIn({
         )}
       </div>
 
-      <div className="card">
+      <div className="card coach-card">
+        <p className="coach-message">{g.message}</p>
         <div className="pace-preview">
-          <span className="pace-word">Next set: {word}</span>
-          <span className="muted small">{next.toFixed(2)}s per pass</span>
+          <span className="pace-word">Next set: {g.direction}</span>
+          <span className="muted small">{g.nextPace.toFixed(2)}s per pass</span>
         </div>
-        <p className="muted small pace-why">{paceRationale(word)}</p>
+        <p className="coach-source">guidance from an on-device model · no data left your device</p>
       </div>
 
-      <button className="primary" onClick={() => onContinue(r)}>
+      <button className="primary" onClick={() => onContinue(r, g)}>
         Another set
       </button>
       <button className="linkish" onClick={onFinish}>

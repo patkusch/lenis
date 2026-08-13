@@ -738,6 +738,32 @@ a.resource:hover {
   text-align: left;
 }
 
+.transcript {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+  max-width: 360px;
+  margin: 0 auto;
+  font-style: italic;
+  opacity: 0.9;
+}
+
+.coach-card {
+  text-align: left;
+}
+.coach-message {
+  margin: 0 0 16px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.coach-source {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  opacity: 0.75;
+}
+
 /* ---- self-report vs voice comparison ---- */
 
 .compare-rows {
