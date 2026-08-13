@@ -178,12 +178,13 @@ function Welcome({
   const [ack, setAck] = useState(false);
   return (
     <main className="screen center">
-      <div className="mark">Sway</div>
+      <div className="mark">Lenis</div>
       <h1>A place to steady yourself.</h1>
       <p className="lede">
-        Sway guides gentle <strong>bilateral stimulation</strong> — a slow,
-        side-to-side rhythm for your eyes, ears, or hands. People use it to calm
-        down, settle a racing mind, and feel more present.
+        Lenis guides gentle <strong>bilateral stimulation</strong> — a slow,
+        side-to-side rhythm for your eyes, ears, or hands — and quietly adapts
+        the pace to the sound of your voice. People use it to calm down, settle
+        a racing mind, and feel more present.
       </p>
 
       <div className="card safety">
@@ -874,7 +875,7 @@ function Close({
 
   return (
     <main className="screen center">
-      <div className="mark small">Sway</div>
+      <div className="mark small">Lenis</div>
       <h1>Take a slow breath.</h1>
       <p className="lede">Notice your feet on the floor and the room around you.</p>
 

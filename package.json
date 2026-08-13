@@ -1,9 +1,9 @@
 {
-  "name": "sway",
+  "name": "lenis",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Sway — a bilateral-stimulation grounding tool. A calming aid, not a substitute for therapy.",
+  "description": "Lenis — a voice-guided calming companion. Adaptive EMDR-style bilateral stimulation. A self-help aid, not a substitute for therapy.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
