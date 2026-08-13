@@ -244,6 +244,64 @@ button {
   border-color: var(--accent);
   font-weight: 600;
 }
+.seg.col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 12px 8px;
+}
+.seg-glyph {
+  font-size: 20px;
+  line-height: 1;
+}
+.seg-note {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* ---- evidence disclosure ---- */
+
+.card.evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.ev-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.ev-row strong {
+  display: block;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+.ev-row p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.ev-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex: none;
+}
+.ev-dot.green {
+  background: var(--good);
+  box-shadow: 0 0 10px var(--good);
+}
+.ev-dot.amber {
+  background: #ffcf7e;
+  box-shadow: 0 0 10px #ffcf7e;
+}
+.ev-dot.red {
+  background: var(--danger);
+  box-shadow: 0 0 10px var(--danger);
+}
 
 input[type="range"] {
   width: 100%;

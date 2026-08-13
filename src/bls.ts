@@ -3,11 +3,15 @@
 // the way a therapist's hand does), with optional stereo-panned audio pings
 // and haptic taps synced to each edge. All local; nothing leaves the device.
 
+export type Pattern = "horizontal" | "vertical";
+
 export interface SwayOptions {
   /** Seconds for one left→right pass. Lower = faster. ~0.9s is a common pace. */
   secondsPerPass: number;
   audio: boolean;
   haptics: boolean;
+  /** Movement path the target traces. */
+  pattern: Pattern;
   /** CSS color for the orb. */
   color: string;
   /** Orb radius as a fraction of the smaller viewport dimension (0–1). */
@@ -18,9 +22,22 @@ const DEFAULTS: SwayOptions = {
   secondsPerPass: 0.9,
   audio: true,
   haptics: true,
+  pattern: "horizontal",
   color: "#8ec5ff",
   sizeFraction: 0.05,
 };
+
+/** Normalised position (px,py in −1..1) and its per-phase velocity (vx,vy)
+ *  for each movement pattern, at the given phase. */
+function pathAt(pattern: Pattern, p: number) {
+  const sin = Math.sin(p);
+  const cos = Math.cos(p);
+  if (pattern === "vertical") {
+    return { px: 0, py: sin, vx: 0, vy: cos };
+  }
+  // horizontal (default)
+  return { px: sin, py: 0, vx: cos, vy: 0 };
+}
 
 export class SwayEngine {
   private canvas: HTMLCanvasElement;
@@ -65,14 +82,23 @@ export class SwayEngine {
     // dark, longer underfur (a soft halo) + bright, shorter overfur on the rim
     this.backFur = Array.from({ length: 120 }, () => mk(true));
     this.frontFur = Array.from({ length: 160 }, () => mk(false));
-    // a few wispy hairs sticking up off the top
-    this.tuft = Array.from({ length: 6 }, () => ({
-      angle: -Math.PI / 2 + (Math.random() - 0.5) * 0.9,
-      len: 1.5 + Math.random() * 0.9,
-      width: 0.4 + Math.random() * 0.5,
-      curl: (Math.random() - 0.5) * 0.4,
+    // wispy hairs sticking up off the top…
+    const topWisps = Array.from({ length: 9 }, () => ({
+      angle: -Math.PI / 2 + (Math.random() - 0.5) * 1.1,
+      len: 1.5 + Math.random() * 1.05,
+      width: 0.32 + Math.random() * 0.42,
+      curl: (Math.random() - 0.5) * 0.55,
       r0: 0.8,
     }));
+    // …plus a few long, thin strays poking out anywhere for a tousled look
+    const strays = Array.from({ length: 7 }, () => ({
+      angle: Math.random() * Math.PI * 2,
+      len: 1.7 + Math.random() * 1.2,
+      width: 0.26 + Math.random() * 0.32,
+      curl: (Math.random() - 0.5) * 0.75,
+      r0: 0.82,
+    }));
+    this.tuft = [...topWisps, ...strays];
   }
 
   setOptions(opts: Partial<SwayOptions>) {
@@ -131,8 +157,9 @@ export class SwayEngine {
     this.masterGain.connect(this.audioCtx.destination);
   }
 
-  /** A short, soft, stereo-panned tone — the classic BLS "tock". */
-  private ping(side: -1 | 1) {
+  /** A short, soft, stereo-panned tone — the classic BLS "tock".
+   *  `pan` is −1 (hard left) … 0 (centre) … 1 (hard right). */
+  private ping(pan: number) {
     if (!this.audioCtx || !this.masterGain) return;
     const ctx = this.audioCtx;
     const now = ctx.currentTime;
@@ -140,7 +167,7 @@ export class SwayEngine {
     const osc = ctx.createOscillator();
     osc.type = "sine";
     // Slightly different pitch per side helps the brain register the crossover.
-    osc.frequency.value = side < 0 ? 196 : 246.94; // G3 / B3
+    osc.frequency.value = pan < 0 ? 196 : 246.94; // G3 / B3
 
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.0001, now);
@@ -148,7 +175,7 @@ export class SwayEngine {
     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
 
     const panner = ctx.createStereoPanner();
-    panner.pan.value = side * 0.85;
+    panner.pan.value = pan * 0.85;
 
     osc.connect(gain).connect(panner).connect(this.masterGain);
     osc.start(now);
@@ -170,24 +197,26 @@ export class SwayEngine {
     // One full cycle (left→right→left) = 2 passes.
     const omega = Math.PI / this.opts.secondsPerPass; // rad/s
     const phase = omega * t;
-    const xNorm = Math.sin(phase); // -1..1, eased at edges
-    const vel = Math.cos(phase); // sign of motion
+    const { px, py, vx, vy } = pathAt(this.opts.pattern, phase);
 
-    // Edge crossing: velocity changed sign since last frame → hit an extreme.
-    if (this.lastVel !== 0 && Math.sign(vel) !== Math.sign(this.lastVel)) {
-      const side: -1 | 1 = xNorm >= 0 ? 1 : -1;
-      if (this.opts.audio) this.ping(side);
+    // Beat on each turnaround of the primary axis (vertical uses the y-axis).
+    const primaryVel = this.opts.pattern === "vertical" ? vy : vx;
+    if (this.lastVel !== 0 && Math.sign(primaryVel) !== Math.sign(this.lastVel)) {
+      const side: -1 | 1 = px >= 0 ? 1 : -1;
+      const pan = this.opts.pattern === "vertical" ? 0 : side;
+      if (this.opts.audio) this.ping(pan);
       this.tap();
       this.onEdge?.(side);
     }
-    this.lastVel = vel;
+    this.lastVel = primaryVel;
 
     const margin = Math.min(w, h) * (this.opts.sizeFraction + 0.04);
-    // Cap the sweep width. Wide, fast arcs are the main cause of dizziness, so
-    // keep the travel to a comfortable visual angle even on large screens.
-    const amplitude = Math.min(w / 2 - margin, w * 0.3);
-    const cx = w / 2 + xNorm * amplitude;
-    const cy = h / 2;
+    // Cap the travel. Wide, fast arcs are the main cause of dizziness, so keep
+    // it to a comfortable visual angle even on large screens.
+    const ampX = Math.min(w / 2 - margin, w * 0.3);
+    const ampY = Math.min(h / 2 - margin, h * 0.22);
+    const cx = w / 2 + px * ampX;
+    const cy = h / 2 + py * ampY;
     const r = Math.min(w, h) * this.opts.sizeFraction;
 
     // Fade the previous frame slightly instead of clearing → soft motion trail.
@@ -208,7 +237,7 @@ export class SwayEngine {
     // Friendly fluff creature — the light your eyes follow.
     // Subtle "breathing" scale gives it life without distracting the eye.
     const breath = 1 + 0.02 * Math.sin(t * 1.1);
-    this.drawFluff(cx, cy, r * 1.3 * breath, Math.sign(vel) || 1);
+    this.drawFluff(cx, cy, r * 1.3 * breath, Math.sign(vx) || 1);
 
     this.raf = requestAnimationFrame(this.frame);
   };

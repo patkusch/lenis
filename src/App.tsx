@@ -1,8 +1,20 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { SwayEngine } from "./bls";
+import { SwayEngine, type Pattern } from "./bls";
 import { VoiceAnalyzer, sampleReading, type VoiceReading } from "./voice";
 
-type Phase = "welcome" | "setup" | "session" | "checkin" | "close" | "distress";
+const PATTERNS: { key: Pattern; label: string; glyph: string; note: string }[] = [
+  { key: "horizontal", label: "Side to side", glyph: "↔", note: "the classic" },
+  { key: "vertical", label: "Up & down", glyph: "↕", note: "gentler if dizzy" },
+];
+
+type Phase =
+  | "welcome"
+  | "evidence"
+  | "setup"
+  | "session"
+  | "checkin"
+  | "close"
+  | "distress";
 
 /** Maps the vocal arousal proxy (0..1) to the next set's pace. Elevated arousal
  *  → slower/calmer (longer seconds per pass); calm → back toward baseline. */
@@ -65,6 +77,7 @@ export default function App() {
   const [secondsPerPass, setSecondsPerPass] = useState(1.1); // baseline from setup
   const [audio, setAudio] = useState(true);
   const [haptics, setHaptics] = useState(true);
+  const [pattern, setPattern] = useState<Pattern>("horizontal");
 
   // adaptive-set state
   const [pace, setPace] = useState(1.1); // active pace for the current set
@@ -91,7 +104,14 @@ export default function App() {
 
   return (
     <div className="app">
-      {phase === "welcome" && <Welcome onContinue={() => setPhase("setup")} />}
+      {phase === "welcome" && (
+        <Welcome
+          onContinue={() => setPhase("setup")}
+          onEvidence={() => setPhase("evidence")}
+        />
+      )}
+
+      {phase === "evidence" && <Evidence onBack={() => setPhase("welcome")} />}
 
       {phase === "setup" && (
         <Setup
@@ -103,6 +123,8 @@ export default function App() {
           setAudio={setAudio}
           haptics={haptics}
           setHaptics={setHaptics}
+          pattern={pattern}
+          setPattern={setPattern}
           before={before}
           setBefore={setBefore}
           onStart={startFirstSet}
@@ -113,6 +135,7 @@ export default function App() {
         <Session
           durationSec={durationSec}
           secondsPerPass={pace}
+          pattern={pattern}
           audio={audio}
           haptics={haptics}
           banner={
@@ -158,7 +181,13 @@ export default function App() {
 /* Welcome / safety gate                                              */
 /* ------------------------------------------------------------------ */
 
-function Welcome({ onContinue }: { onContinue: () => void }) {
+function Welcome({
+  onContinue,
+  onEvidence,
+}: {
+  onContinue: () => void;
+  onEvidence: () => void;
+}) {
   const [ack, setAck] = useState(false);
   return (
     <main className="screen center">
@@ -207,6 +236,85 @@ function Welcome({ onContinue }: { onContinue: () => void }) {
       <button className="primary" disabled={!ack} onClick={onContinue}>
         Continue
       </button>
+      <button className="linkish" onClick={onEvidence}>
+        About the evidence &amp; limits
+      </button>
+    </main>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Evidence & limits (Responsible-AI disclosure)                      */
+/* ------------------------------------------------------------------ */
+
+function Evidence({ onBack }: { onBack: () => void }) {
+  return (
+    <main className="screen">
+      <div className="mark small">About the evidence</div>
+      <h1 className="tight">What's backed, and what isn't.</h1>
+      <p className="lede">
+        We'd rather tell you the limits up front than dress this up as more than
+        it is.
+      </p>
+
+      <div className="card evidence">
+        <div className="ev-row">
+          <span className="ev-dot green" />
+          <div>
+            <strong>EMDR for PTSD — well supported.</strong>
+            <p>
+              Recommended for PTSD by the WHO, APA, and NICE. Evidence is weaker
+              for phobias and panic, and thin for everyday anxiety.
+            </p>
+          </div>
+        </div>
+        <div className="ev-row">
+          <span className="ev-dot amber" />
+          <div>
+            <strong>Do the eye movements themselves help? — debated.</strong>
+            <p>
+              Studies disagree on whether the bilateral movement adds much beyond
+              the recall itself. The leading idea is that tracking a moving target
+              loads working memory, making a memory feel less vivid. Plausible,
+              not settled.
+            </p>
+          </div>
+        </div>
+        <div className="ev-row">
+          <span className="ev-dot amber" />
+          <div>
+            <strong>Side-to-side vs. up-and-down — limited.</strong>
+            <p>
+              Side-to-side is the standard protocol. Up-and-down has some lab
+              support and is often used when horizontal movement causes nausea.
+              We offer only these two; we didn't invent "prettier" paths and
+              pretend they're therapeutic.
+            </p>
+          </div>
+        </div>
+        <div className="ev-row">
+          <span className="ev-dot red" />
+          <div>
+            <strong>The voice read — a proof-of-concept, not clinical.</strong>
+            <p>
+              We estimate arousal from the <em>sound</em> of your voice (pitch,
+              pace, energy). It's a rough proxy to guide pacing — not a diagnosis
+              or a validated measure.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <p className="muted small">
+        Bottom line: a self-guided calming aid that borrows an EMDR technique —
+        best used alongside a licensed therapist, not instead of one. Self-guided
+        memory work on serious trauma carries real risk without a clinician
+        present.
+      </p>
+
+      <button className="primary" onClick={onBack}>
+        Back
+      </button>
     </main>
   );
 }
@@ -224,6 +332,8 @@ function Setup(props: {
   setAudio: (b: boolean) => void;
   haptics: boolean;
   setHaptics: (b: boolean) => void;
+  pattern: Pattern;
+  setPattern: (p: Pattern) => void;
   before: number | null;
   setBefore: (n: number) => void;
   onStart: () => void;
@@ -266,6 +376,23 @@ function Setup(props: {
           <div className="range-ends">
             <span>slower</span>
             <span>faster</span>
+          </div>
+        </div>
+
+        <div className="field">
+          <label>Movement</label>
+          <div className="segmented">
+            {PATTERNS.map((p) => (
+              <button
+                key={p.key}
+                className={props.pattern === p.key ? "seg on col" : "seg col"}
+                onClick={() => props.setPattern(p.key)}
+              >
+                <span className="seg-glyph">{p.glyph}</span>
+                <span>{p.label}</span>
+                <span className="seg-note">{p.note}</span>
+              </button>
+            ))}
           </div>
         </div>
 
@@ -348,6 +475,7 @@ function Suds({
 function Session({
   durationSec,
   secondsPerPass,
+  pattern,
   audio,
   haptics,
   banner,
@@ -356,6 +484,7 @@ function Session({
 }: {
   durationSec: number;
   secondsPerPass: number;
+  pattern: Pattern;
   audio: boolean;
   haptics: boolean;
   banner?: string;
@@ -375,6 +504,7 @@ function Session({
       secondsPerPass: effectivePace,
       audio,
       haptics,
+      pattern,
       color: "#8ec5ff",
       sizeFraction: 0.045,
     });
