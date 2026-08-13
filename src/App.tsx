@@ -1,7 +1,30 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { SwayEngine } from "./bls";
+import { VoiceAnalyzer, sampleReading, type VoiceReading } from "./voice";
 
-type Phase = "welcome" | "setup" | "session" | "close" | "distress";
+type Phase = "welcome" | "setup" | "session" | "checkin" | "close" | "distress";
+
+/** Maps the vocal arousal proxy (0..1) to the next set's pace. Elevated arousal
+ *  → slower/calmer (longer seconds per pass); calm → back toward baseline. */
+function adaptPace(base: number, arousal: number): number {
+  const delta = (arousal - 0.5) * 0.7; // ±0.35s swing around baseline
+  return Math.max(0.5, Math.min(1.6, base + delta));
+}
+
+function paceWord(base: number, next: number): string {
+  if (next > base + 0.04) return "slower";
+  if (next < base - 0.04) return "a touch quicker";
+  return "steady";
+}
+
+/** Plain-language reason for the pace change, so users know what it's *for*. */
+function paceRationale(word: string): string {
+  if (word === "slower")
+    return "Your voice sounded activated, so we'll slow down — a gentler rhythm gives a keyed-up nervous system room to settle.";
+  if (word === "a touch quicker")
+    return "Your voice sounded settled, so a slightly livelier rhythm helps you stay present and engaged.";
+  return "Your voice sounded steady, so we'll hold a comfortable, even rhythm.";
+}
 
 interface CheckIn {
   ts: number;
@@ -39,13 +62,32 @@ export default function App() {
 
   // session config
   const [durationSec, setDurationSec] = useState(60);
-  const [secondsPerPass, setSecondsPerPass] = useState(0.9);
+  const [secondsPerPass, setSecondsPerPass] = useState(1.1); // baseline from setup
   const [audio, setAudio] = useState(true);
   const [haptics, setHaptics] = useState(true);
 
-  // check-in
+  // adaptive-set state
+  const [pace, setPace] = useState(1.1); // active pace for the current set
+  const [setNum, setSetNum] = useState(1);
+  const [lastReading, setLastReading] = useState<VoiceReading | null>(null);
+
+  // self-report check-in
   const [before, setBefore] = useState<number | null>(null);
   const [after, setAfter] = useState<number | null>(null);
+
+  const startFirstSet = () => {
+    setPace(secondsPerPass);
+    setSetNum(1);
+    setLastReading(null);
+    setPhase("session");
+  };
+
+  const continueFromReading = (r: VoiceReading) => {
+    setPace(adaptPace(secondsPerPass, r.arousal));
+    setLastReading(r);
+    setSetNum((n) => n + 1);
+    setPhase("session");
+  };
 
   return (
     <div className="app">
@@ -63,18 +105,31 @@ export default function App() {
           setHaptics={setHaptics}
           before={before}
           setBefore={setBefore}
-          onStart={() => setPhase("session")}
+          onStart={startFirstSet}
         />
       )}
 
       {phase === "session" && (
         <Session
           durationSec={durationSec}
-          secondsPerPass={secondsPerPass}
+          secondsPerPass={pace}
           audio={audio}
           haptics={haptics}
-          onDone={() => setPhase("close")}
+          banner={
+            setNum > 1
+              ? `Set ${setNum} · ${paceWord(secondsPerPass, pace)}`
+              : undefined
+          }
+          onDone={() => setPhase("checkin")}
           onDistress={() => setPhase("distress")}
+        />
+      )}
+
+      {phase === "checkin" && (
+        <CheckIn
+          baselinePace={secondsPerPass}
+          onContinue={continueFromReading}
+          onFinish={() => setPhase("close")}
         />
       )}
 
@@ -84,6 +139,7 @@ export default function App() {
           after={after}
           setAfter={setAfter}
           durationSec={durationSec}
+          lastReading={lastReading}
           onAgain={() => {
             setAfter(null);
             setPhase("setup");
@@ -128,6 +184,10 @@ function Welcome({ onContinue }: { onContinue: () => void }) {
           <li>
             If you start to feel overwhelmed, <strong>stop</strong> — a button is
             always on screen.
+          </li>
+          <li>
+            If eye movement feels dizzying, <strong>close your eyes</strong> and
+            follow the sound or taps instead.
           </li>
           <li>
             Everything stays <strong>on your device</strong>. No account, no
@@ -290,6 +350,7 @@ function Session({
   secondsPerPass,
   audio,
   haptics,
+  banner,
   onDone,
   onDistress,
 }: {
@@ -297,17 +358,21 @@ function Session({
   secondsPerPass: number;
   audio: boolean;
   haptics: boolean;
+  banner?: string;
   onDone: () => void;
   onDistress: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<SwayEngine | null>(null);
   const [remaining, setRemaining] = useState(durationSec);
+  // live, in-session nudge on top of the adaptive pace (for comfort / dizziness)
+  const [nudge, setNudge] = useState(0);
+  const effectivePace = Math.max(0.5, Math.min(1.8, secondsPerPass + nudge));
 
   useEffect(() => {
     const canvas = canvasRef.current!;
     const engine = new SwayEngine(canvas, {
-      secondsPerPass,
+      secondsPerPass: effectivePace,
       audio,
       haptics,
       color: "#8ec5ff",
@@ -341,8 +406,8 @@ function Session({
 
   // keep live controls responsive without restarting the session
   useEffect(() => {
-    engineRef.current?.setOptions({ secondsPerPass, audio, haptics });
-  }, [secondsPerPass, audio, haptics]);
+    engineRef.current?.setOptions({ secondsPerPass: effectivePace, audio, haptics });
+  }, [effectivePace, audio, haptics]);
 
   const mins = Math.floor(remaining / 60);
   const secs = Math.floor(remaining % 60);
@@ -351,21 +416,273 @@ function Session({
     <div className="session">
       <canvas ref={canvasRef} className="canvas" />
       <div className="session-overlay">
-        <p className="follow">Let your eyes follow the light.</p>
+        <div className="session-top">
+          {banner && <div className="set-banner">{banner}</div>}
+          <p className="follow">Let your eyes follow the fluffball.</p>
+          <p className="follow-tip">
+            Keep your head still — move only your eyes. Dizzy? Close them and
+            follow the sound instead.
+          </p>
+        </div>
+
         <div className="timer">
           {mins}:{secs.toString().padStart(2, "0")}
         </div>
-        <div className="session-actions">
-          <button className="ghost" onClick={onDone}>
-            Finish early
-          </button>
-          <button className="stop" onClick={onDistress}>
-            Stop — I need help
-          </button>
+
+        <div className="session-controls">
+          <div className="speed-stepper">
+            <button
+              className="step"
+              onClick={() => setNudge((n) => Math.min(0.7, n + 0.15))}
+              aria-label="Slow the fluffball down"
+            >
+              − slower
+            </button>
+            <span className="speed-read">{effectivePace.toFixed(2)}s</span>
+            <button
+              className="step"
+              onClick={() => setNudge((n) => Math.max(-0.4, n - 0.15))}
+              aria-label="Speed the fluffball up"
+            >
+              faster +
+            </button>
+          </div>
+          <div className="session-actions">
+            <button className="ghost" onClick={onDone}>
+              Finish early
+            </button>
+            <button className="stop" onClick={onDistress}>
+              Stop — I need help
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Vocal check-in (Pillar 1: vocal-adaptive pacing)                   */
+/* ------------------------------------------------------------------ */
+
+const MAX_RECORD_SEC = 12;
+
+function CheckIn({
+  baselinePace,
+  onContinue,
+  onFinish,
+}: {
+  baselinePace: number;
+  onContinue: (r: VoiceReading) => void;
+  onFinish: () => void;
+}) {
+  type Stage = "intro" | "recording" | "done" | "error";
+  const [stage, setStage] = useState<Stage>("intro");
+  const [level, setLevel] = useState(0);
+  const [reading, setReading] = useState<VoiceReading | null>(null);
+  const [remaining, setRemaining] = useState(MAX_RECORD_SEC);
+  const analyzerRef = useRef<VoiceAnalyzer | null>(null);
+  const timerRef = useRef<number | undefined>(undefined);
+
+  const finish = useCallback(() => {
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = undefined;
+    }
+    const az = analyzerRef.current;
+    if (!az) return;
+    analyzerRef.current = null;
+    setReading(az.stop());
+    setLevel(0);
+    setStage("done");
+  }, []);
+
+  const showSample = useCallback((arousal: number) => {
+    setReading(sampleReading(arousal));
+    setStage("done");
+  }, []);
+
+  const begin = useCallback(async () => {
+    const az = new VoiceAnalyzer();
+    az.onLevel = (l) => setLevel(l);
+    analyzerRef.current = az;
+    try {
+      await az.start();
+    } catch {
+      analyzerRef.current = null;
+      setStage("error");
+      return;
+    }
+    setStage("recording");
+    setRemaining(MAX_RECORD_SEC);
+    const startedAt = Date.now();
+    timerRef.current = window.setInterval(() => {
+      const left = MAX_RECORD_SEC - (Date.now() - startedAt) / 1000;
+      setRemaining(Math.max(0, left));
+      if (left <= 0) finish();
+    }, 150);
+  }, [finish]);
+
+  // clean up mic if the user leaves mid-recording
+  useEffect(
+    () => () => {
+      if (timerRef.current) window.clearInterval(timerRef.current);
+      analyzerRef.current?.stop();
+      analyzerRef.current = null;
+    },
+    [],
+  );
+
+  const disclaimer = (
+    <p className="muted small privacy-note">
+      🔒 A proof-of-concept read from your voice — <em>not</em> a clinical
+      measure. Audio is analyzed on your device and never leaves it.
+    </p>
+  );
+
+  if (stage === "intro") {
+    return (
+      <main className="screen center">
+        <div className="mark small">Check in</div>
+        <h1>What's coming up for you?</h1>
+        <p className="lede">
+          When you're ready, speak a sentence or two out loud — whatever you're
+          noticing. I'll listen to the <em>sound</em> of your voice to set a
+          gentle pace for the next set.
+        </p>
+        <button className="primary" onClick={begin}>
+          🎤 Start speaking
+        </button>
+        <button className="linkish" onClick={() => onContinue(sampleReading(0.5))}>
+          No mic? Continue without it
+        </button>
+        <button className="linkish" onClick={onFinish}>
+          Finish the session
+        </button>
+        {disclaimer}
+      </main>
+    );
+  }
+
+  if (stage === "recording") {
+    return (
+      <main className="screen center">
+        <div className="mark small">Listening…</div>
+        <h1>I'm listening.</h1>
+        <div className="mic-wrap">
+          <div
+            className="mic-ring"
+            style={{ transform: `scale(${1 + level * 0.6})`, opacity: 0.4 + level * 0.6 }}
+          />
+          <div className="mic-core">🎤</div>
+        </div>
+        <p className="lede">Say a little about how you're feeling right now.</p>
+        <p className="muted">{Math.ceil(remaining)}s</p>
+        <button className="primary" onClick={finish}>
+          Done
+        </button>
+        {disclaimer}
+      </main>
+    );
+  }
+
+  if (stage === "error") {
+    return (
+      <main className="screen center">
+        <h1>I couldn't reach your mic.</h1>
+        <p className="lede">
+          Check the browser's microphone permission for this page, or carry on
+          without it — the session still works, it just won't adapt to your
+          voice this round.
+        </p>
+        <button className="primary" onClick={begin}>
+          Try the mic again
+        </button>
+        <button className="linkish" onClick={() => showSample(0.68)}>
+          Preview a sample read (no mic)
+        </button>
+        <button className="linkish" onClick={() => onContinue(sampleReading(0.5))}>
+          Continue without the mic
+        </button>
+        <button className="linkish" onClick={onFinish}>
+          Finish the session
+        </button>
+      </main>
+    );
+  }
+
+  // stage === "done"
+  const r = reading!;
+  const next = adaptPace(baselinePace, r.arousal);
+  const word = paceWord(baselinePace, next);
+  return (
+    <main className="screen center">
+      <div className="mark small">Your voice read as</div>
+      <h1 className="band-title">{bandLabel(r.band)}</h1>
+
+      <div className="card">
+        <div className="meter-row">
+          <span>calm</span>
+          <div className="meter">
+            <div className="meter-fill" style={{ width: `${Math.round(r.arousal * 100)}%` }} />
+          </div>
+          <span>elevated</span>
+        </div>
+        <div className="signal-grid">
+          <Signal label="pitch movement" v={r.pitchVariability} />
+          <Signal label="speech pace" v={r.speechRate} />
+          <Signal label="energy" v={r.energy} />
+        </div>
+        {!r.ok && (
+          <p className="muted small">
+            (Not much voice picked up — treat this read loosely.)
+          </p>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="pace-preview">
+          <span className="pace-word">Next set: {word}</span>
+          <span className="muted small">{next.toFixed(2)}s per pass</span>
+        </div>
+        <p className="muted small pace-why">{paceRationale(word)}</p>
+      </div>
+
+      <button className="primary" onClick={() => onContinue(r)}>
+        Another set
+      </button>
+      <button className="linkish" onClick={onFinish}>
+        Finish here
+      </button>
+      {disclaimer}
+    </main>
+  );
+}
+
+function Signal({ label, v }: { label: string; v: number }) {
+  return (
+    <div className="signal">
+      <div className="signal-bar">
+        <div className="signal-fill" style={{ height: `${Math.round(v * 100)}%` }} />
+      </div>
+      <span className="signal-label">{label}</span>
+    </div>
+  );
+}
+
+function bandLabel(band: VoiceReading["band"]): string {
+  switch (band) {
+    case "calm":
+      return "calm 🌿";
+    case "settling":
+      return "settling 🍃";
+    case "neutral":
+      return "steady";
+    case "elevated":
+      return "a bit elevated";
+    case "high":
+      return "quite activated";
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -377,12 +694,14 @@ function Close({
   after,
   setAfter,
   durationSec,
+  lastReading,
   onAgain,
 }: {
   before: number | null;
   after: number | null;
   setAfter: (n: number) => void;
   durationSec: number;
+  lastReading: VoiceReading | null;
   onAgain: () => void;
 }) {
   const saved = useRef(false);
@@ -416,6 +735,36 @@ function Close({
           </p>
         )}
       </div>
+
+      {lastReading && after !== null && (
+        <div className="card compare">
+          <label className="field-label">Your number vs. your voice</label>
+          <div className="compare-rows">
+            <div className="compare-row">
+              <span>you said</span>
+              <div className="meter">
+                <div className="meter-fill you" style={{ width: `${after * 10}%` }} />
+              </div>
+              <span className="compare-val">{after}/10</span>
+            </div>
+            <div className="compare-row">
+              <span>voice read</span>
+              <div className="meter">
+                <div
+                  className="meter-fill voice"
+                  style={{ width: `${Math.round(lastReading.arousal * 100)}%` }}
+                />
+              </div>
+              <span className="compare-val">{Math.round(lastReading.arousal * 10)}/10</span>
+            </div>
+          </div>
+          <p className="muted small">
+            {Math.abs(after - lastReading.arousal * 10) >= 2
+              ? "These disagree — and that gap is the interesting part. The body doesn't always match the number we report."
+              : "Close agreement this time — your words and your voice lined up."}
+          </p>
+        </div>
+      )}
 
       <button className="primary" onClick={onAgain}>
         Another round

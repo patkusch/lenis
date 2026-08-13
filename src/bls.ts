@@ -183,7 +183,10 @@ export class SwayEngine {
     this.lastVel = vel;
 
     const margin = Math.min(w, h) * (this.opts.sizeFraction + 0.04);
-    const cx = w / 2 + (xNorm * (w / 2 - margin));
+    // Cap the sweep width. Wide, fast arcs are the main cause of dizziness, so
+    // keep the travel to a comfortable visual angle even on large screens.
+    const amplitude = Math.min(w / 2 - margin, w * 0.3);
+    const cx = w / 2 + xNorm * amplitude;
     const cy = h / 2;
     const r = Math.min(w, h) * this.opts.sizeFraction;
 

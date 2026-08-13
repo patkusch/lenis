@@ -373,6 +373,51 @@ input[type="range"] {
   margin: 0;
   opacity: 0.75;
 }
+.follow-tip {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 320px;
+  text-align: center;
+  opacity: 0.55;
+}
+
+/* live speed stepper */
+.session-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.speed-stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(11, 13, 26, 0.55);
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  padding: 4px;
+  backdrop-filter: blur(6px);
+}
+.step {
+  padding: 8px 14px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.step:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+.speed-read {
+  min-width: 46px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
 .timer {
   font-size: 20px;
   color: var(--muted);
@@ -488,4 +533,182 @@ a.resource:hover {
 }
 .crisis-pop a:hover {
   background: rgba(255, 255, 255, 0.05);
+}
+
+/* ---- secondary link-style buttons ---- */
+
+.linkish {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 6px;
+  color: var(--muted);
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease;
+}
+.linkish:hover {
+  color: var(--text);
+}
+
+.privacy-note {
+  margin-top: 22px;
+  line-height: 1.5;
+}
+
+/* ---- session banner (adaptive set label) ---- */
+
+.session-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.set-banner {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid rgba(142, 197, 255, 0.35);
+  background: rgba(142, 197, 255, 0.08);
+  padding: 5px 14px;
+  border-radius: 999px;
+}
+
+/* ---- mic capture ---- */
+
+.mic-wrap {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  margin: 20px auto 28px;
+  display: grid;
+  place-items: center;
+}
+.mic-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(142, 197, 255, 0.45), rgba(142, 197, 255, 0) 70%);
+  transition: transform 0.08s ease-out, opacity 0.08s ease-out;
+}
+.mic-core {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 34px;
+  background: var(--bg-2);
+  border: 1px solid var(--card-border);
+  box-shadow: 0 8px 30px -10px var(--accent);
+}
+
+/* ---- arousal read ---- */
+
+.band-title {
+  text-transform: capitalize;
+}
+.meter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.meter {
+  flex: 1;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--good), var(--accent), var(--accent-2));
+  transition: width 0.4s ease;
+}
+
+.signal-grid {
+  display: flex;
+  justify-content: space-around;
+  gap: 12px;
+  margin-top: 20px;
+}
+.signal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.signal-bar {
+  width: 34px;
+  height: 70px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+.signal-fill {
+  width: 100%;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  border-radius: 8px 8px 0 0;
+  transition: height 0.4s ease;
+}
+.signal-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.pace-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pace-word {
+  font-size: 17px;
+  font-weight: 600;
+}
+.pace-why {
+  margin: 12px 0 0;
+  line-height: 1.55;
+  text-align: left;
+}
+
+/* ---- self-report vs voice comparison ---- */
+
+.compare-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.compare-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.compare-row > span:first-child {
+  width: 76px;
+  text-align: right;
+  flex: none;
+}
+.compare-val {
+  width: 42px;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.meter-fill.you {
+  background: var(--accent-2);
+}
+.meter-fill.voice {
+  background: var(--good);
 }
