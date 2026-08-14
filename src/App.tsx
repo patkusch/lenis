@@ -38,7 +38,7 @@ const DURATIONS = [
   { label: "2 min", sec: 120 },
 ];
 
-const HISTORY_KEY = "sway.history.v1";
+const HISTORY_KEY = "lenis.history.v1";
 
 function loadHistory(): CheckIn[] {
   try {
@@ -1262,7 +1262,7 @@ function Distress({ onBack }: { onBack: () => void }) {
           <strong>Call or text 988</strong>
           <span>Suicide &amp; Crisis Lifeline (US) — 24/7</span>
         </a>
-        <a className="resource" href="sms:741741&body=HOME">
+        <a className="resource" href="sms:741741?body=HOME">
           <strong>Text HOME to 741741</strong>
           <span>Crisis Text Line (US) — 24/7</span>
         </a>
@@ -1297,7 +1297,7 @@ function CrisisFooter() {
       {open && (
         <div className="crisis-pop">
           <a href="tel:988">Call/Text 988 (US)</a>
-          <a href="sms:741741&body=HOME">Text HOME to 741741</a>
+          <a href="sms:741741?body=HOME">Text HOME to 741741</a>
           <a href="https://findahelpline.com" target="_blank" rel="noreferrer">
             Find a line worldwide
           </a>

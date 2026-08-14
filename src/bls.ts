@@ -178,6 +178,7 @@ export class SwayEngine {
   /** A short, soft, stereo-panned tone — the classic BLS "tock".
    *  `pan` is −1 (hard left) … 0 (centre) … 1 (hard right). */
   private ping(pan: number) {
+    if (!this.audioCtx || !this.masterGain) this.initAudio();
     if (!this.audioCtx || !this.masterGain) return;
     const ctx = this.audioCtx;
     const now = ctx.currentTime;

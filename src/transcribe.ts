@@ -23,6 +23,7 @@ export class Transcriber {
   readonly supported: boolean;
   private rec: SpeechRecognitionLike | null = null;
   private finalText = "";
+  private interimText = "";
   /** interim + final text, streamed as the user speaks */
   onText?: (live: string) => void;
 
@@ -45,6 +46,7 @@ export class Transcriber {
           if (r.isFinal) this.finalText += r[0].transcript + " ";
           else interim += r[0].transcript;
         }
+        this.interimText = interim; // keep the latest un-finalized words
         this.onText?.((this.finalText + interim).trim());
       };
       rec.onerror = () => {};
@@ -54,6 +56,7 @@ export class Transcriber {
 
   start(): void {
     this.finalText = "";
+    this.interimText = "";
     try {
       this.rec?.start();
     } catch {
@@ -61,13 +64,14 @@ export class Transcriber {
     }
   }
 
-  /** Stops recognition and returns the final transcript (may be empty). */
+  /** Stops recognition and returns the transcript. Falls back to the latest
+   *  interim words when nothing was finalized (common on short check-ins). */
   stop(): string {
     try {
       this.rec?.stop();
     } catch {
       /* not running — fine */
     }
-    return this.finalText.trim();
+    return (this.finalText + " " + this.interimText).trim();
   }
 }
