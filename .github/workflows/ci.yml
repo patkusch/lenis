@@ -16,3 +16,5 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: coach rules and the offline voice analyzer
+        run: npm test

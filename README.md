@@ -99,6 +99,18 @@ vocal signal without a transcript.
 npm run build   # production build → dist/
 ```
 
+## Tests
+
+```bash
+npm test
+```
+
+No mic needed. The suite drives the same pitch/energy pipeline as the live path
+on synthetic clips and checks the agitated one reads as more aroused than the
+calm one on every feature the proxy blends; and it tries the coach from the
+outside — every crisis phrase routes to help, words nudge the vocal read but can
+never override it, and the pace moves the way the text above says it does.
+
 ## Credits
 
 Built by **patkusch** for Hack for Humanity, Summer 2026.
