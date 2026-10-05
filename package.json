@@ -2,6 +2,10 @@
   "name": "lenis",
   "private": true,
   "version": "0.1.0",
+  "author": "patkusch",
+  "repository": { "type": "git", "url": "git+https://github.com/patkusch/lenis.git" },
+  "homepage": "https://github.com/patkusch/lenis#readme",
+  "bugs": { "url": "https://github.com/patkusch/lenis/issues" },
   "type": "module",
   "description": "Lenis — a voice-guided calming companion. Adaptive EMDR-style bilateral stimulation. A self-help aid, not a substitute for therapy.",
   "scripts": {
