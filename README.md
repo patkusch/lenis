@@ -1,5 +1,7 @@
 # Lenis
 
+[![ci](https://github.com/patkusch/lenis/actions/workflows/ci.yml/badge.svg)](https://github.com/patkusch/lenis/actions/workflows/ci.yml)
+
 **A voice-guided calming companion.** Lenis leads you through gentle,
 EMDR-style *bilateral stimulation* — a soft target that eases side to side while
 your eyes follow — and adapts the pace to **the sound of your voice**, not a
