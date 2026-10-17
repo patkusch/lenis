@@ -1,6 +1,7 @@
 {
   "name": "lenis",
   "private": true,
+  "engines": { "node": ">=22" },
   "version": "0.1.0",
   "author": "patkusch",
   "repository": { "type": "git", "url": "git+https://github.com/patkusch/lenis.git" },
