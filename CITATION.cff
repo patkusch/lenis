@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "lenis"
+abstract: "A calming companion that plays a guided sound pattern and sets its pace from your voice. Runs in the browser; your audio stays on your device."
+type: software
+authors:
+  - family-names: "Kusch"
+    given-names: "Patricia"
+repository-code: "https://github.com/patkusch/lenis"
+license: MIT
