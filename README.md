@@ -116,3 +116,7 @@ never override it, and the pace moves the way the text above says it does.
 ## Credits
 
 Built by **patkusch** for Hack for Humanity, Summer 2026.
+
+---
+
+[Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md)
